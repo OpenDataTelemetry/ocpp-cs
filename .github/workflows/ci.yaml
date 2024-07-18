@@ -31,4 +31,4 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           push: true
-          tags: rogeriocassares/ocpp1.6-cs:0.2
+          tags: rogeriocassares/ocpp1_6-cs:0.3

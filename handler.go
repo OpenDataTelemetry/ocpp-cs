@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -11,6 +13,67 @@ import (
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/types"
 )
 
+// find the charger id by the charger number and the charger station
+func defineDeviceId(chargePointId string, connectorId string) string {
+	var v string
+	ok := false
+	if chargePointId == "EVSE_1" {
+		v, ok = EVSE1[connectorId]
+	} else if chargePointId == "Simulador" {
+		v, ok = SimuladorCarregador[connectorId]
+	} else if chargePointId == "Simulador2" {
+		v, ok = SimuladorCarregador2[connectorId]
+	}
+	if !ok {
+		// v = "DeviceId"
+		v = "erro"
+	}
+
+	return v
+}
+
+func defineMQTTTopic(deviceId string) string {
+
+	var messageTopic strings.Builder
+	messageTopic.WriteString(path)
+	messageTopic.WriteString(deviceId)
+	messageTopic.WriteString(`/rx`)
+
+	return messageTopic.String()
+}
+
+var (
+	// <- Create var for channel
+	c             chan string
+	c2            chan [2]string
+	sbMqttMessage strings.Builder
+	// Registration of transactions
+	Transaction = map[string]string{}
+
+	// Charger stations
+	EVSE1 = map[string]string{
+		"0": "EVSE_1",
+		"1": "19400577",
+		"2": "19743013",
+	}
+	//Simulator
+	SimuladorCarregador = map[string]string{
+		"0": "Simulador",
+		"1": "Simulador-1",
+	}
+	//Simulator
+	SimuladorCarregador2 = map[string]string{
+		"0": "Simulador2",
+		"1": "Simulador2-1",
+	}
+
+	// path = "OpenDataTelemetry/IMT/EVSE/"
+	path = "IMT/EVSE/"
+	// OpenDataTelemetry/IMT/EVSE/{DeviceId}/rx
+
+)
+
+// HANDLER INIT
 var (
 	nextTransactionId = 0
 )
@@ -69,29 +132,86 @@ type CentralSystemHandler struct {
 
 func (handler *CentralSystemHandler) OnAuthorize(chargePointId string, request *core.AuthorizeRequest) (confirmation *core.AuthorizeConfirmation, err error) {
 	logDefault(chargePointId, request.GetFeatureName()).Infof("client authorized")
+
 	return core.NewAuthorizationConfirmation(types.NewIdTagInfo(types.AuthorizationStatusAccepted)), nil
 }
 
 func (handler *CentralSystemHandler) OnBootNotification(chargePointId string, request *core.BootNotificationRequest) (confirmation *core.BootNotificationConfirmation, err error) {
 	logDefault(chargePointId, request.GetFeatureName()).Infof("boot confirmed")
+
 	return core.NewBootNotificationConfirmation(types.NewDateTime(time.Now()), defaultHeartbeatInterval, core.RegistrationStatusAccepted), nil
 }
 
 func (handler *CentralSystemHandler) OnDataTransfer(chargePointId string, request *core.DataTransferRequest) (confirmation *core.DataTransferConfirmation, err error) {
 	logDefault(chargePointId, request.GetFeatureName()).Infof("received data %d", request.Data)
+
+	// type DataTransferRequest struct {
+	// 	VendorId  string      `json:"vendorId" validate:"required,max=255"`
+	// 	MessageId string      `json:"messageId,omitempty" validate:"max=50"`
+	// 	Data      interface{} `json:"data,omitempty"`
+	// }
+
+	// m := fmt.Sprintf(
+	// 	`{"type":"%s", "VendorId":"%s", "MessageId": "%s", "timestamp": "%s"}`,
+	// 	request.GetFeatureName(),
+	// 	request.VendorId,
+	// 	request.MessageId,
+	// 	request.Data,
+	// )
+
+	// topic := defineMQTTTopic(deviceId)
+
+	// c2 <- [2]string{topic, m}
+
 	return core.NewDataTransferConfirmation(core.DataTransferStatusAccepted), nil
+
+	///BATERIA
 }
 
 func (handler *CentralSystemHandler) OnHeartbeat(chargePointId string, request *core.HeartbeatRequest) (confirmation *core.HeartbeatConfirmation, err error) {
 	logDefault(chargePointId, request.GetFeatureName()).Infof("heartbeat handled")
+
 	return core.NewHeartbeatConfirmation(types.NewDateTime(time.Now())), nil
+
 }
 
 func (handler *CentralSystemHandler) OnMeterValues(chargePointId string, request *core.MeterValuesRequest) (confirmation *core.MeterValuesConfirmation, err error) {
+
 	logDefault(chargePointId, request.GetFeatureName()).Infof("received meter values for connector %v. Meter values:\n", request.ConnectorId)
 	for _, mv := range request.MeterValue {
 		logDefault(chargePointId, request.GetFeatureName()).Printf("%v", mv)
+
+		// Message TODO
+		// sbMqttMessage.Reset()
+		// sbMqttMessage.WriteString(`{"type":"`)
+		// sbMqttMessage.WriteString(request.GetFeatureName())
+		// sbMqttMessage.WriteString(`", "chargePointId" : "`)
+		// sbMqttMessage.WriteString(chargePointId)
+		// sbMqttMessage.WriteString(`"}`)
+
+		// m := sbMqttMessage.String()
+		// fmt.Printf("\n\n### OnMeterValues: %s", m)
+
+		deviceId := defineDeviceId(chargePointId, strconv.Itoa(request.ConnectorId))
+
+		m := fmt.Sprintf(
+			`{"type":"%s", "value":"%s", "timestamp": "%s", "unit": "%s", "format": "%s", "measurand":"%s", "context": "%s", "location": "%s", "deviceId": "%s"}`,
+			request.GetFeatureName(),
+			mv.SampledValue[0].Value,
+			mv.Timestamp.String(),
+			mv.SampledValue[0].Unit,
+			mv.SampledValue[0].Format,
+			mv.SampledValue[0].Measurand,
+			mv.SampledValue[0].Context,
+			mv.SampledValue[0].Location,
+			deviceId,
+		)
+
+		topic := defineMQTTTopic(deviceId)
+
+		c2 <- [2]string{topic, m}
 	}
+
 	return core.NewMeterValuesConfirmation(), nil
 }
 
@@ -109,6 +229,25 @@ func (handler *CentralSystemHandler) OnStatusNotification(chargePointId string, 
 		info.status = request.Status
 		logDefault(chargePointId, request.GetFeatureName()).Infof("all connectors updated status to %v", request.Status)
 	}
+
+	deviceId := defineDeviceId(chargePointId, strconv.Itoa(request.ConnectorId))
+
+	m := fmt.Sprintf(
+		`{"type":"%s", "connectorId":"%s", "timestamp": "%s", "status": "%s", "errorCode": "%s", "info":"%s" , "vendorId": "%s","vendorErrorCode":"%s"}`,
+		request.GetFeatureName(),
+		strconv.Itoa(request.ConnectorId),
+		request.Timestamp,
+		request.Status,
+		request.ErrorCode,
+		request.Info,
+		request.VendorId,
+		request.VendorErrorCode,
+	)
+
+	topic := defineMQTTTopic(deviceId)
+
+	c2 <- [2]string{topic, m}
+
 	return core.NewStatusNotificationConfirmation(), nil
 }
 
@@ -122,16 +261,52 @@ func (handler *CentralSystemHandler) OnStartTransaction(chargePointId string, re
 		return nil, fmt.Errorf("connector %v is currently busy with another transaction", request.ConnectorId)
 	}
 	transaction := &TransactionInfo{}
-	transaction.idTag = request.IdTag
-	transaction.connectorId = request.ConnectorId
-	transaction.startMeter = request.MeterStart
-	transaction.startTime = request.Timestamp
-	transaction.id = nextTransactionId
-	nextTransactionId += 1
-	connector.currentTransaction = transaction.id
-	info.transactions[transaction.id] = transaction
-	//TODO: check billable clients
+	transaction.idTag = request.IdTag               //idTag: O ID da tag do usuário que iniciou a transação.
+	transaction.connectorId = request.ConnectorId   //connectorId: O ID do conector onde a transação está ocorrendo.
+	transaction.startMeter = request.MeterStart     //startMeter: A leitura inicial do medidor no início da transação.
+	transaction.startTime = request.Timestamp       //startTime: O timestamp indicando quando a transação foi iniciada.
+	transaction.id = nextTransactionId              //id: Um identificador único para a transação. Este é incrementado usando nextTransactionId.
+	nextTransactionId += 1                          //
+	connector.currentTransaction = transaction.id   //
+	info.transactions[transaction.id] = transaction //
+
+	// type TransactionInfo struct {
+	// id          int
+	// startTime   *types.DateTime
+	// endTime     *types.DateTime			Ñ
+	// startMeter  int						ok
+	// endMeter    int						Ñ
+	// connectorId int						ok
+	// idTag       string					ok
+	// }
 	logDefault(chargePointId, request.GetFeatureName()).Infof("started transaction %v for connector %v", transaction.id, transaction.connectorId)
+
+	deviceId := defineDeviceId(chargePointId, strconv.Itoa(request.ConnectorId))
+
+	m := fmt.Sprintf(
+		`{"type":"%s","startMeter":"%s", "transactionId": "%s", "startTime": "%s", "connectorId" : "%s", "IdTag" : "%s"}`,
+		request.GetFeatureName(),
+		strconv.Itoa(transaction.startMeter),
+		strconv.Itoa(transaction.id),
+		fmt.Sprint(transaction.startTime),
+		strconv.Itoa(request.ConnectorId),
+		transaction.idTag,
+	)
+
+	topic := defineMQTTTopic(deviceId)
+
+	c2 <- [2]string{topic, m}
+
+	//saving Connectorid from the transaction ID
+	Transaction[strconv.Itoa(transaction.id)] = strconv.Itoa(request.ConnectorId)
+
+	// Send mensage to connector
+	// request := core.NewDataTransferConfirmation
+	// err := centralSystem.SendRequestAsync("clientId", request, callbackFunction)
+	// if err != nil {
+	// log.Printf("error sending message: %v", err)
+	// }
+
 	return core.NewStartTransactionConfirmation(types.NewIdTagInfo(types.AuthorizationStatusAccepted), transaction.id), nil
 }
 
@@ -148,10 +323,38 @@ func (handler *CentralSystemHandler) OnStopTransaction(chargePointId string, req
 		transaction.endMeter = request.MeterStop
 		//TODO: bill charging period to client
 	}
+
+	// type TransactionInfo struct {
+	// id          int
+	// startTime   *types.DateTime
+	// endTime     *types.DateTime			Ñ
+	// startMeter  int						ok
+	// endMeter    int						Ñ
+	// connectorId int						ok
+	// idTag       string					ok
+	// }
 	logDefault(chargePointId, request.GetFeatureName()).Infof("stopped transaction %v - %v", request.TransactionId, request.Reason)
 	for _, mv := range request.TransactionData {
 		logDefault(chargePointId, request.GetFeatureName()).Printf("%v", mv)
 	}
+
+	deviceId := defineDeviceId(chargePointId, Transaction[strconv.Itoa(request.TransactionId)])
+
+	m := fmt.Sprintf(
+		`{"type":"%s","endMeter":"%s", "transactionId": "%s", "endTime": "%s", "connectorId" : "%s"}`,
+		request.GetFeatureName(),
+		strconv.Itoa(request.MeterStop),
+		strconv.Itoa(request.TransactionId),
+		fmt.Sprint(request.Timestamp),
+		Transaction[strconv.Itoa(request.TransactionId)],
+	)
+
+	topic := defineMQTTTopic(deviceId)
+
+	c2 <- [2]string{topic, m}
+
+	delete(Transaction, strconv.Itoa(request.TransactionId))
+
 	return core.NewStopTransactionConfirmation(), nil
 }
 
@@ -183,4 +386,5 @@ func (handler *CentralSystemHandler) OnFirmwareStatusNotification(chargePointId 
 
 func logDefault(chargePointId string, feature string) *logrus.Entry {
 	return log.WithFields(logrus.Fields{"client": chargePointId, "message": feature})
+	// return log.WithFields(logrus.Fields{})
 }

@@ -3,9 +3,10 @@ package main
 import (
 	"crypto/tls"
 	"crypto/x509"
-	"io/ioutil"
+	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -19,6 +20,9 @@ import (
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/types"
 	"github.com/lorenzodonini/ocpp-go/ocppj"
 	"github.com/lorenzodonini/ocpp-go/ws"
+
+	MQTT "github.com/eclipse/paho.mqtt.golang"
+	"github.com/google/uuid"
 )
 
 const (
@@ -51,7 +55,7 @@ func setupTlsCentralSystem() ocpp16.CentralSystem {
 		certPool = systemPool
 	} else {
 		certPool = x509.NewCertPool()
-		data, err := ioutil.ReadFile(caCertificate)
+		data, err := os.ReadFile(caCertificate)
 		if err != nil {
 			log.Fatalf("couldn't read CA certificate from %v: %v", caCertificate, err)
 		}
@@ -187,10 +191,62 @@ func exampleRoutine(chargePointID string, handler *CentralSystemHandler) {
 		logDefault(chargePointID, remotetrigger.TriggerMessageFeatureName).Errorf("couldn't send message: %v", e)
 		return
 	}
+
 }
 
 // Start function
 func main() {
+	// TODO: MAKE A CHANNEL WITH 4 FIELDS: [type, chargePointID, connectorId, data]
+	// TODO: USE defineDeviceId(connectorId) TO MOUNT THE TOPIC
+	// TODO: RECEIVE EACH VARIABLE AND MOUNT THE JSON MESSAGE
+	// <- Make channel and assign to var
+	c = make(chan string)
+	c2 = make(chan [2]string)
+
+	id := uuid.New().String()
+	var sbMqttClientId strings.Builder
+	sbMqttClientId.WriteString("ocpp-")
+	sbMqttClientId.WriteString(id)
+
+	// pBroker := "mqtt://mqtt.maua.br:1883"
+	// pBroker := "mqtt://smartcampus.maua.br:1883"
+	pBroker := "mqtt://weblab.maua.br:1883"
+
+	pClientId := sbMqttClientId.String()
+	pUser := "PUBLIC"
+	pPassword := "public"
+	pQos := 0
+
+	pOpts := MQTT.NewClientOptions()
+	pOpts.AddBroker(pBroker)
+	pOpts.SetClientID(pClientId)
+	pOpts.SetUsername(pUser)
+	pOpts.SetPassword(pPassword)
+
+	pClient := MQTT.NewClient(pOpts)
+	if token := pClient.Connect(); token.Wait() && token.Error() != nil {
+		panic(token.Error())
+	} else {
+		fmt.Printf("Connected to %s\n", pBroker)
+	}
+
+	go func() {
+		for { // send MQTT
+
+			// incoming, ok := <-c2
+			incoming := <-c2
+			// fmt.Println("Topic: ", incoming[0],"\t Message:",incoming[1])
+			incoming[1] = fmt.Sprintf(`{"props":{"deviceName":"EVSE"},"data":` + incoming[1] + "}")
+
+			// fmt.Println("Topic: ", incoming[0],"\t Message:",`{"props":{"deviceNam
+			// e":"EVSE","data":` +incoming[1]+"}}")
+			fmt.Println(incoming[1])
+			token := pClient.Publish(incoming[0], byte(pQos), false, incoming[1])
+			token.Wait()
+
+		}
+	}()
+
 	// Load config from ENV
 	var listenPort = defaultListenPort
 	port, _ := os.LookupEnv(envVarServerPort)
@@ -216,18 +272,20 @@ func main() {
 	centralSystem.SetReservationHandler(handler)
 	centralSystem.SetRemoteTriggerHandler(handler)
 	centralSystem.SetSmartChargingHandler(handler)
+
 	// Add handlers for dis/connection of charge points
 	centralSystem.SetNewChargePointHandler(func(chargePoint ocpp16.ChargePointConnection) {
 		handler.chargePoints[chargePoint.ID()] = &ChargePointState{connectors: map[int]*ConnectorInfo{}, transactions: map[int]*TransactionInfo{}}
 		log.WithField("client", chargePoint.ID()).Info("new charge point connected")
-		go exampleRoutine(chargePoint.ID(), handler)
+		// go exampleRoutine(chargePoint.ID(), handler)
+
 	})
 	centralSystem.SetChargePointDisconnectedHandler(func(chargePoint ocpp16.ChargePointConnection) {
 		log.WithField("client", chargePoint.ID()).Info("charge point disconnected")
 		delete(handler.chargePoints, chargePoint.ID())
 	})
 	ocppj.SetLogger(log.WithField("logger", "ocppj"))
-	// ws.SetLogger(log.WithField("logger", "websocket"))
+	ws.SetLogger(log.WithField("logger", "websocket"))
 	// Run central system
 	log.Infof("starting central system on port %v", listenPort)
 	centralSystem.Start(listenPort, "/{ws}")

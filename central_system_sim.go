@@ -210,7 +210,7 @@ func main() {
 
 	// pBroker := "mqtt://mqtt.maua.br:1883"
 	// pBroker := "mqtt://smartcampus.maua.br:1883"
-	pBroker := "mqtt://weblab.maua.br:1883"
+	pBroker := "mqtt://mqtt.maua.br:1883"
 
 	pClientId := sbMqttClientId.String()
 	pUser := "PUBLIC"

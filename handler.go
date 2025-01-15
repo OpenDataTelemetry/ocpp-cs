@@ -32,12 +32,14 @@ func defineDeviceId(chargePointId string, connectorId string) string {
 	return v
 }
 
-func defineMQTTTopic(deviceId string) string {
+func defineMQTTTopic(measurement, deviceId string) string {
 
 	var messageTopic strings.Builder
 	messageTopic.WriteString(path)
+	messageTopic.WriteString(measurement)
+
 	messageTopic.WriteString(deviceId)
-	messageTopic.WriteString(`/rx`)
+	messageTopic.WriteString(`/up/etc`)
 
 	return messageTopic.String()
 }
@@ -67,8 +69,8 @@ var (
 		"1": "Simulador2-1",
 	}
 
-	// path = "OpenDataTelemetry/IMT/EVSE/"
-	path = "IMT/EVSE/"
+	path = "OpenDataTelemetry/IMT/EVSE/"
+	// path = "IMT/EVSE/"
 	// OpenDataTelemetry/IMT/EVSE/{DeviceId}/rx
 
 )
@@ -181,37 +183,43 @@ func (handler *CentralSystemHandler) OnMeterValues(chargePointId string, request
 	for _, mv := range request.MeterValue {
 		logDefault(chargePointId, request.GetFeatureName()).Printf("%v", mv)
 
-		// Message TODO
-		// sbMqttMessage.Reset()
-		// sbMqttMessage.WriteString(`{"type":"`)
-		// sbMqttMessage.WriteString(request.GetFeatureName())
-		// sbMqttMessage.WriteString(`", "chargePointId" : "`)
-		// sbMqttMessage.WriteString(chargePointId)
-		// sbMqttMessage.WriteString(`"}`)
-
-		// m := sbMqttMessage.String()
-		// fmt.Printf("\n\n### OnMeterValues: %s", m)
-
 		deviceId := defineDeviceId(chargePointId, strconv.Itoa(request.ConnectorId))
+		timestamp_ns := time.Now().UnixNano()
+		measurement := request.GetFeatureName()
+		t := defineMQTTTopic(measurement, deviceId)
 
-		m := fmt.Sprintf(
-			`{"type":"%s", "value":"%s", "timestamp": "%s", "unit": "%s", "format": "%s", "measurand":"%s", "context": "%s", "location": "%s", "deviceId": "%s"}`,
-			request.GetFeatureName(),
-			mv.SampledValue[0].Value,
-			mv.Timestamp.String(),
-			mv.SampledValue[0].Unit,
-			mv.SampledValue[0].Format,
-			mv.SampledValue[0].Measurand,
-			mv.SampledValue[0].Context,
-			mv.SampledValue[0].Location,
-			deviceId,
-		)
+		sbMqttMessage.Reset()
+		sbMqttMessage.WriteString(`{"measurement": "Evse`)
+		sbMqttMessage.WriteString(measurement)
+		sbMqttMessage.WriteString(`", "type": "`)
+		sbMqttMessage.WriteString("EVSE")
+		sbMqttMessage.WriteString(`", "ConnectorId" : "`)
+		sbMqttMessage.WriteString(strconv.FormatInt(int64(request.ConnectorId), 10))
+		sbMqttMessage.WriteString(`", "chargePointId" : "`)
+		sbMqttMessage.WriteString(chargePointId)
+		sbMqttMessage.WriteString(`", "fowardEnergy" : "`)
+		sbMqttMessage.WriteString(mv.SampledValue[0].Value)
+		sbMqttMessage.WriteString(`", "unit" : "`)
+		sbMqttMessage.WriteString(string(mv.SampledValue[0].Unit))
+		sbMqttMessage.WriteString(`", "format" : "`)
+		sbMqttMessage.WriteString(string(mv.SampledValue[0].Format))
+		sbMqttMessage.WriteString(`", "measurand" : "`)
+		sbMqttMessage.WriteString(string(mv.SampledValue[0].Measurand))
+		sbMqttMessage.WriteString(`", "context" : "`)
+		sbMqttMessage.WriteString(string(mv.SampledValue[0].Context))
+		sbMqttMessage.WriteString(`", "location" : "`)
+		sbMqttMessage.WriteString(string(mv.SampledValue[0].Location))
+		sbMqttMessage.WriteString(`", "deviceId" : "`)
+		sbMqttMessage.WriteString(deviceId)
+		sbMqttMessage.WriteString(`", "timestamp" : "`)
+		sbMqttMessage.WriteString(strconv.FormatInt(timestamp_ns, 10))
+		sbMqttMessage.WriteString(`"}`)
 
-		topic := defineMQTTTopic(deviceId)
+		m := sbMqttMessage.String()
+		c2 <- [2]string{t, m}
 
-		c2 <- [2]string{topic, m}
+		fmt.Printf("\n\n### OnMeterValues: %s", m)
 	}
-
 	return core.NewMeterValuesConfirmation(), nil
 }
 
@@ -231,22 +239,37 @@ func (handler *CentralSystemHandler) OnStatusNotification(chargePointId string, 
 	}
 
 	deviceId := defineDeviceId(chargePointId, strconv.Itoa(request.ConnectorId))
+	timestamp_ns := time.Now().UnixNano()
+	measurement := request.GetFeatureName()
+	t := defineMQTTTopic(measurement, deviceId)
 
-	m := fmt.Sprintf(
-		`{"type":"%s", "connectorId":"%s", "timestamp": "%s", "status": "%s", "errorCode": "%s", "info":"%s" , "vendorId": "%s","vendorErrorCode":"%s"}`,
-		request.GetFeatureName(),
-		strconv.Itoa(request.ConnectorId),
-		request.Timestamp,
-		request.Status,
-		request.ErrorCode,
-		request.Info,
-		request.VendorId,
-		request.VendorErrorCode,
-	)
+	sbMqttMessage.Reset()
+	sbMqttMessage.WriteString(`{"measurement": "Evse`)
+	sbMqttMessage.WriteString(measurement)
+	sbMqttMessage.WriteString(`", "type": "`)
+	sbMqttMessage.WriteString("EVSE")
+	sbMqttMessage.WriteString(`", "ConnectorId" : "`)
+	sbMqttMessage.WriteString(strconv.FormatInt(int64(request.ConnectorId), 10))
+	sbMqttMessage.WriteString(`", "chargePointId" : "`)
+	sbMqttMessage.WriteString(chargePointId)
+	sbMqttMessage.WriteString(`", "status" : "`)
+	sbMqttMessage.WriteString(string(request.Status))
+	sbMqttMessage.WriteString(`", "errorCode" : "`)
+	sbMqttMessage.WriteString(string(request.ErrorCode))
+	sbMqttMessage.WriteString(`", "info" : "`)
+	sbMqttMessage.WriteString(request.Info)
+	sbMqttMessage.WriteString(`", "vendorId" : "`)
+	sbMqttMessage.WriteString(request.VendorId)
+	sbMqttMessage.WriteString(`", "vendorErrorCode" : "`)
+	sbMqttMessage.WriteString(request.VendorErrorCode)
+	sbMqttMessage.WriteString(`", "deviceId" : "`)
+	sbMqttMessage.WriteString(deviceId)
+	sbMqttMessage.WriteString(`", "timestamp" : "`)
+	sbMqttMessage.WriteString(strconv.FormatInt(timestamp_ns, 10))
+	sbMqttMessage.WriteString(`"}`)
 
-	topic := defineMQTTTopic(deviceId)
-
-	c2 <- [2]string{topic, m}
+	m := sbMqttMessage.String()
+	c2 <- [2]string{t, m}
 
 	return core.NewStatusNotificationConfirmation(), nil
 }
@@ -282,20 +305,35 @@ func (handler *CentralSystemHandler) OnStartTransaction(chargePointId string, re
 	logDefault(chargePointId, request.GetFeatureName()).Infof("started transaction %v for connector %v", transaction.id, transaction.connectorId)
 
 	deviceId := defineDeviceId(chargePointId, strconv.Itoa(request.ConnectorId))
+	timestamp_ns := time.Now().UnixNano()
+	measurement := request.GetFeatureName()
+	t := defineMQTTTopic(measurement, deviceId)
 
-	m := fmt.Sprintf(
-		`{"type":"%s","startMeter":"%s", "transactionId": "%s", "startTime": "%s", "connectorId" : "%s", "IdTag" : "%s"}`,
-		request.GetFeatureName(),
-		strconv.Itoa(transaction.startMeter),
-		strconv.Itoa(transaction.id),
-		fmt.Sprint(transaction.startTime),
-		strconv.Itoa(request.ConnectorId),
-		transaction.idTag,
-	)
+	sbMqttMessage.Reset()
+	sbMqttMessage.WriteString(`{"measurement": "Evse`)
+	sbMqttMessage.WriteString(measurement)
+	sbMqttMessage.WriteString(`", "type": "`)
+	sbMqttMessage.WriteString("EVSE")
+	sbMqttMessage.WriteString(`", "ConnectorId" : "`)
+	sbMqttMessage.WriteString(strconv.FormatInt(int64(request.ConnectorId), 10))
+	sbMqttMessage.WriteString(`", "chargePointId" : "`)
+	sbMqttMessage.WriteString(chargePointId)
+	sbMqttMessage.WriteString(`", "startMeter" : "`)
+	sbMqttMessage.WriteString(strconv.FormatInt(int64(transaction.startMeter), 10))
+	sbMqttMessage.WriteString(`", "transactionId" : "`)
+	sbMqttMessage.WriteString(strconv.FormatInt(int64(transaction.id), 10))
+	sbMqttMessage.WriteString(`", "startTime" : "`)
+	sbMqttMessage.WriteString(strconv.FormatInt(int64(transaction.startTime.UnixNano()), 10))
+	sbMqttMessage.WriteString(`", "idTag" : "`)
+	sbMqttMessage.WriteString(transaction.idTag)
+	sbMqttMessage.WriteString(`", "deviceId" : "`)
+	sbMqttMessage.WriteString(deviceId)
+	sbMqttMessage.WriteString(`", "timestamp" : "`)
+	sbMqttMessage.WriteString(strconv.FormatInt(timestamp_ns, 10))
+	sbMqttMessage.WriteString(`"}`)
 
-	topic := defineMQTTTopic(deviceId)
-
-	c2 <- [2]string{topic, m}
+	m := sbMqttMessage.String()
+	c2 <- [2]string{t, m}
 
 	//saving Connectorid from the transaction ID
 	Transaction[strconv.Itoa(transaction.id)] = strconv.Itoa(request.ConnectorId)
@@ -338,20 +376,35 @@ func (handler *CentralSystemHandler) OnStopTransaction(chargePointId string, req
 		logDefault(chargePointId, request.GetFeatureName()).Printf("%v", mv)
 	}
 
+	// deviceId := defineDeviceId(chargePointId, strconv.Itoa(request.ConnectorId))
 	deviceId := defineDeviceId(chargePointId, Transaction[strconv.Itoa(request.TransactionId)])
+	timestamp_ns := time.Now().UnixNano()
+	measurement := request.GetFeatureName()
+	t := defineMQTTTopic(measurement, deviceId)
 
-	m := fmt.Sprintf(
-		`{"type":"%s","endMeter":"%s", "transactionId": "%s", "endTime": "%s", "connectorId" : "%s"}`,
-		request.GetFeatureName(),
-		strconv.Itoa(request.MeterStop),
-		strconv.Itoa(request.TransactionId),
-		fmt.Sprint(request.Timestamp),
-		Transaction[strconv.Itoa(request.TransactionId)],
-	)
+	sbMqttMessage.Reset()
+	sbMqttMessage.WriteString(`{"measurement": "Evse`)
+	sbMqttMessage.WriteString(measurement)
+	sbMqttMessage.WriteString(`", "type": "`)
+	sbMqttMessage.WriteString("EVSE")
+	sbMqttMessage.WriteString(`", "ConnectorId" : "`)
+	sbMqttMessage.WriteString(Transaction[strconv.Itoa(request.TransactionId)])
+	sbMqttMessage.WriteString(`", "chargePointId" : "`)
+	sbMqttMessage.WriteString(chargePointId)
+	sbMqttMessage.WriteString(`", "transactionId" : "`)
+	sbMqttMessage.WriteString(strconv.FormatInt(int64(request.TransactionId), 10))
+	sbMqttMessage.WriteString(`", "endMeter" : "`)
+	sbMqttMessage.WriteString(strconv.FormatInt(int64(request.MeterStop), 10))
+	sbMqttMessage.WriteString(`", "endTime" : "`)
+	sbMqttMessage.WriteString(strconv.FormatInt(int64(request.Timestamp.UnixNano()), 10))
+	sbMqttMessage.WriteString(`", "deviceId" : "`)
+	sbMqttMessage.WriteString(deviceId)
+	sbMqttMessage.WriteString(`", "timestamp" : "`)
+	sbMqttMessage.WriteString(strconv.FormatInt(timestamp_ns, 10))
+	sbMqttMessage.WriteString(`"}`)
 
-	topic := defineMQTTTopic(deviceId)
-
-	c2 <- [2]string{topic, m}
+	m := sbMqttMessage.String()
+	c2 <- [2]string{t, m}
 
 	delete(Transaction, strconv.Itoa(request.TransactionId))
 

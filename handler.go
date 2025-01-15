@@ -40,7 +40,7 @@ func defineMQTTTopic(measurement, deviceId string) string {
 	messageTopic.WriteString(measurement)
 	messageTopic.WriteString(`/`)
 	messageTopic.WriteString(deviceId)
-	messageTopic.WriteString(`/up/etc`)
+	messageTopic.WriteString(`/up/imt`)
 
 	return messageTopic.String()
 }

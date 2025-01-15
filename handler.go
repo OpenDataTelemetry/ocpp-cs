@@ -13,11 +13,12 @@ import (
 	"github.com/lorenzodonini/ocpp-go/ocpp1.6/types"
 )
 
-// find the charger id by the charger number and the charger station
+// From https://www.realschemes.org.uk/pdf/ev-roam-guidance.pdf
+// Set EVSE-ID
 func defineDeviceId(chargePointId string, connectorId string) string {
 	var v string
 	ok := false
-	if chargePointId == "EVSE_1" {
+	if chargePointId == "BRIMTS01" {
 		v, ok = EVSE1[connectorId]
 	} else if chargePointId == "Simulador" {
 		v, ok = SimuladorCarregador[connectorId]
@@ -54,9 +55,9 @@ var (
 
 	// Charger stations
 	EVSE1 = map[string]string{
-		"0": "EVSE_1",
-		"1": "19400577",
-		"2": "19743013",
+		"0": "BRIMTS01",
+		"1": "BRIMTE19400577",
+		"2": "BRIMTE19743013",
 	}
 	//Simulator
 	SimuladorCarregador = map[string]string{

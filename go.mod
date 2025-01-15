@@ -1,4 +1,4 @@
-module smartcampusmaua/smartcampusmaua-ocpp
+module github.com/OpenDataTelemetry/ocpp16-csms
 
 go 1.18
 

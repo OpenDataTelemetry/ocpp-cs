@@ -377,10 +377,12 @@ func (handler *CentralSystemHandler) OnStopTransaction(chargePointId string, req
 	}
 
 	// deviceId := defineDeviceId(chargePointId, strconv.Itoa(request.ConnectorId))
-	deviceId := defineDeviceId(chargePointId, Transaction[strconv.Itoa(request.TransactionId)])
+	// deviceId := defineDeviceId(chargePointId, Transaction[strconv.Itoa(request.TransactionId)])
+
+	deviceId := defineDeviceId(chargePointId, "0")
 	timestamp_ns := time.Now().UnixNano()
 	measurement := request.GetFeatureName()
-	t := defineMQTTTopic(measurement, deviceId)
+	t := defineMQTTTopic(measurement, (deviceId))
 
 	sbMqttMessage.Reset()
 	sbMqttMessage.WriteString(`{"measurement": "Evse`)

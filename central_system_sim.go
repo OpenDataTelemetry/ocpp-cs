@@ -232,15 +232,8 @@ func main() {
 
 	go func() {
 		for { // send MQTT
-
 			// incoming, ok := <-c2
 			incoming := <-c2
-			// fmt.Println("Topic: ", incoming[0],"\t Message:",incoming[1])
-			// incoming[1] = fmt.Sprintf(`{"props":{"deviceName":"EVSE"},"data":` + incoming[1] + "}")
-
-			// fmt.Println("Topic: ", incoming[0],"\t Message:",`{"props":{"deviceNam
-			// e":"EVSE","data":` +incoming[1]+"}}")
-			fmt.Println(incoming[1])
 			token := pClient.Publish(incoming[0], byte(pQos), false, incoming[1])
 			token.Wait()
 

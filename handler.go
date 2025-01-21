@@ -261,9 +261,9 @@ func (handler *CentralSystemHandler) OnStatusNotification(chargePointId string, 
 	sbMqttMessage.WriteString(request.VendorErrorCode)
 	sbMqttMessage.WriteString(`", "deviceId": "`)
 	sbMqttMessage.WriteString(deviceId)
-	sbMqttMessage.WriteString(`", "timestamp": "`)
+	sbMqttMessage.WriteString(`", "timestamp": `)
 	sbMqttMessage.WriteString(strconv.FormatInt(timestamp_ns, 10))
-	sbMqttMessage.WriteString(`"}`)
+	sbMqttMessage.WriteString(`}`)
 
 	m := sbMqttMessage.String()
 	c2 <- [2]string{t, m}
@@ -394,9 +394,9 @@ func (handler *CentralSystemHandler) OnStopTransaction(chargePointId string, req
 	sbMqttMessage.WriteString(strconv.FormatInt(int64(request.Timestamp.UnixNano()), 10))
 	sbMqttMessage.WriteString(`, "deviceId" : "`)
 	sbMqttMessage.WriteString(deviceId)
-	sbMqttMessage.WriteString(`", "timestamp" : "`)
+	sbMqttMessage.WriteString(`", "timestamp": `)
 	sbMqttMessage.WriteString(strconv.FormatInt(timestamp_ns, 10))
-	sbMqttMessage.WriteString(`"}`)
+	sbMqttMessage.WriteString(`}`)
 
 	m := sbMqttMessage.String()
 	c2 <- [2]string{t, m}
